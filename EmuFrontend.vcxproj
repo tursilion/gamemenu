@@ -27,9 +27,17 @@
 -->
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
     <ProjectConfiguration Include="Debug|x64">
       <Configuration>Debug</Configuration>
       <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
     </ProjectConfiguration>
     <ProjectConfiguration Include="Release|x64">
       <Configuration>Release</Configuration>
@@ -58,8 +66,16 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <IncludePath>D:\work\gameui\imgui\backends;D:\work\gameui\imgui;D:\work\gameui\SDL2\include;$(IncludePath)</IncludePath>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <IncludePath>D:\work\gameui\imgui\backends;D:\work\gameui\imgui;D:\work\gameui\SDL2\include;$(IncludePath)</IncludePath>
+    <LibraryPath>D:\work\gameui\SDL2\lib\x32;$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <IncludePath>D:\work\gameui\imgui\backends;D:\work\gameui\imgui;D:\work\gameui\SDL2\include;$(IncludePath)</IncludePath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <IncludePath>D:\work\gameui\imgui\backends;D:\work\gameui\imgui;D:\work\gameui\SDL2\include;$(IncludePath)</IncludePath>
+    <LibraryPath>D:\work\gameui\SDL2\lib\x32;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <!-- Common settings for both configurations -->
   <ItemDefinitionGroup>
@@ -73,7 +89,7 @@
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
-      <AdditionalLibraryDirectories>$(ProjectDir)SDL2\lib\x64</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(ProjectDir)SDL2\lib\x32</AdditionalLibraryDirectories>
       <AdditionalDependencies>SDL2.lib;SDL2main.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <!-- SDL2main requires the WinMain entry point, which SDL2 redirects
            to main(int, char**). SubSystem must be Windows to avoid a
@@ -91,6 +107,8 @@
     <Link>
       <EntryPointSymbol Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
       </EntryPointSymbol>
+      <EntryPointSymbol Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+      </EntryPointSymbol>
     </Link>
   </ItemDefinitionGroup>
   <!-- Release-specific -->
@@ -106,6 +124,8 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <EntryPointSymbol Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+      </EntryPointSymbol>
+      <EntryPointSymbol Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
       </EntryPointSymbol>
     </Link>
   </ItemDefinitionGroup>

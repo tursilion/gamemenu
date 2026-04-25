@@ -43,6 +43,7 @@
 #include <cstdio>
 #include <cmath>    /* sinf, for pulse animation */
 #include <cstring>
+#include <ctime>
 
 /* =========================================================================
  * Constants / tunables
@@ -239,11 +240,25 @@ static void DrawLCARSDecorations(ImDrawList* dl,
         "LCARS ENTERTAINMENT SUBSYSTEM"
     );
 
-    /* Stardate in peach block */
+    /* Stardate in peach block - calculated from real-time clock */
     char stardate[64];
-    /* Stardate: map current SDL ticks to a Trek-style number */
-    float sd = 47634.4f + (SDL_GetTicks() / 1000.0f) * 0.001f;
-    snprintf(stardate, sizeof(stardate), "STARDATE %07.1f", sd);
+    {
+        time_t    now = time(NULL);
+        struct tm lt  = {};
+        localtime_s(&lt, &now);
+
+        int   year    = lt.tm_year + 1900;
+        bool  isLeap  = ((year % 4 == 0) && (year % 100 != 0)) || (year % 400 == 0);
+        int   daysInYr = isLeap ? 366 : 365;
+
+        /* Fractional day including hours/minutes/seconds */
+        float dayFrac = (float)lt.tm_yday
+                      + (lt.tm_hour * 3600.0f + lt.tm_min * 60.0f + lt.tm_sec) / 86400.0f;
+
+        /* Epoch: stardate 47634.0 = Jan 1 2000, 1000 units per year */
+        float sd = 47634.0f + (year - 2000) * 1000.0f + (dayFrac / daysInYr) * 1000.0f;
+        snprintf(stardate, sizeof(stardate), "STARDATE %08.1f", sd);
+    }
     dl->AddText(font, 16.0f*FONTSCALE,
         { screenW * 0.56f + PAD, (HEADER_H - 16.0f) * 0.5f },
         IM_COL32(20, 20, 50, 255),
@@ -506,8 +521,9 @@ static void DrawScreenshotPanel(ImDrawList* dl, AppState& state,
             label.c_str()
         );
 
-        float imgAreaTop  = panelY + 40.0f;
-        float imgAreaH    = panelH - 56.0f;
+        float imgAreaOff  = FONTSCALE * 15.0f;
+        float imgAreaTop  = panelY + 40.0f + imgAreaOff;
+        float imgAreaH    = panelH - 56.0f - imgAreaOff;
         float imgAreaW    = panelW - 24.0f;
 
         if (st.tex)
