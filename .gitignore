@@ -285,3 +285,5 @@ Classic99v4/classic99v4
 build/
 consolebuild/
 
+*.exe
+*.mp4
