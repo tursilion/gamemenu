@@ -21,6 +21,10 @@
  *   stb_image.h   - https://github.com/nothings/stb
  */
 
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
+#include <xinput.h>
+
 /* ---- stb_image: single-header PNG loader, implementation in this TU ---- */
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -70,7 +74,6 @@ static const ImVec4 COL_STRIPE       = { 0.08f, 0.08f, 0.20f, 1.0f }; /* Alterna
 /* my font scaler */
 static const float FONTSCALE   = 3.0f;
 
-
 /* Joystick thresholds */
 static const float  JOY_AXIS_DEAD    = 0.3f;   /* Dead zone for analog axis */
 static const Uint32 JOY_REPEAT_MS    = 180;    /* Auto-repeat delay for held directions */
@@ -78,6 +81,10 @@ static const Uint32 JOY_REPEAT_MS    = 180;    /* Auto-repeat delay for held dir
 /* Screenshot display area size */
 static const float  SHOT_W           = 480.0f;
 static const float  SHOT_H           = 320.0f;
+
+/* Attract mode - idle timeout before video plays */
+static const Uint32 ATTRACT_TIMEOUT_MS = 30000;  /* 30 seconds idle */
+static const char*  ATTRACT_VIDEO_PATH = "attract.mp4"; /* video to play */
 
 /* =========================================================================
  * Screenshot texture cache
@@ -110,6 +117,11 @@ struct AppState
     std::string statusMsg;
 
     SDL_Joystick* joystick; /* NULL if none found */
+
+    /* Attract mode state */
+    Uint32  lastInputTick;   /* SDL_GetTicks() of last user input */
+    bool    attractActive;   /* true while attract video is playing */
+    HANDLE  attractProcess;  /* Win32 handle to mpv process, NULL if not running */
 };
 
 /* =========================================================================
@@ -575,6 +587,49 @@ static void DrawScreenshotPanel(ImDrawList* dl, AppState& state,
 }
 
 /* =========================================================================
+ * StartAttract - Launch mpv fullscreen to play the attract video.
+ * mpv is launched with no OSD, looping, on top of our window.
+ * Returns the process HANDLE on success, NULL on failure.
+ * The caller is responsible for closing the handle.
+ * ========================================================================= */
+static HANDLE StartAttract(const char* videoPath)
+{
+    /* Build mpv command line.
+     * --loop           : loop video indefinitely until we kill it
+     * --fullscreen     : take over the display
+     * --no-osc         : no on-screen controls
+     * --no-input-default-bindings : prevent mpv consuming our input events */
+    char cmdBuf[1024];
+    snprintf(cmdBuf, sizeof(cmdBuf),
+        "mpv --loop --fullscreen --no-osc --no-input-default-bindings \"%s\"",
+        videoPath);
+
+    STARTUPINFOA        si = {};
+    PROCESS_INFORMATION pi = {};
+    si.cb = sizeof(si);
+
+    BOOL ok = CreateProcessA(NULL, cmdBuf, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi);
+    if (!ok) return NULL;
+
+    CloseHandle(pi.hThread);  /* Don't need the thread handle */
+    return pi.hProcess;
+}
+
+/* =========================================================================
+ * StopAttract - Terminate the attract mpv process and wait for it to exit.
+ * Safe to call with NULL handle.
+ * ========================================================================= */
+static void StopAttract(HANDLE& hProcess, SDL_Window* window)
+{
+    if (hProcess == NULL) return;
+    TerminateProcess(hProcess, 0);
+    WaitForSingleObject(hProcess, 2000);
+    CloseHandle(hProcess);
+    hProcess = NULL;
+    SDL_RaiseWindow(window);
+}
+
+/* =========================================================================
  * HandleJoystick - Poll joystick state, map to navigation events.
  * Updates state.selected based on axis or hat movement.
  * Returns true if the user pressed the confirm/launch button.
@@ -705,6 +760,9 @@ int main(int argc, char* argv[])
     /* ---- Load configuration ---- */
     AppState state = {};
     state.selected = 0;
+    state.lastInputTick  = SDL_GetTicks();
+    state.attractActive  = false;
+    state.attractProcess = NULL;
 
     std::string configError;
     if (!LoadConfig(configPath, state.entries, configError))
@@ -814,10 +872,30 @@ int main(int argc, char* argv[])
         int prevSelected = state.selected;
         int launchIdx    = -1;
 
-        SDL_Event ev;
+SDL_Event ev;
         while (SDL_PollEvent(&ev))
         {
             ImGui_ImplSDL2_ProcessEvent(&ev);
+
+            /* Any input resets the idle timer and exits attract mode */
+            bool isInput = (ev.type == SDL_KEYDOWN       ||
+                            ev.type == SDL_JOYBUTTONDOWN  ||
+                            ev.type == SDL_JOYAXISMOTION  ||
+                            ev.type == SDL_JOYHATMOTION);
+
+            if (isInput)
+            {
+                state.lastInputTick = SDL_GetTicks();
+
+                if (state.attractActive)
+                {
+                    /* Kill mpv and return to menu - consume this input event */
+                    StopAttract(state.attractProcess, window);
+                    state.attractActive = false;
+                    state.statusMsg     = "SYSTEM NOMINAL.";
+                    continue;  /* Don't process this keypress further */
+                }
+            }
 
             switch (ev.type)
             {
@@ -865,6 +943,65 @@ int main(int argc, char* argv[])
 
                 default:
                     break;
+            }
+        }
+
+        /* ---- Attract mode timeout check ---- */
+        if (!state.attractActive &&
+            (SDL_GetTicks() - state.lastInputTick) >= ATTRACT_TIMEOUT_MS)
+        {
+            state.attractProcess = StartAttract(ATTRACT_VIDEO_PATH);
+            if (state.attractProcess != NULL)
+            {
+                state.attractActive = true;
+                state.statusMsg     = "ATTRACT MODE - PRESS ANY KEY TO RETURN";
+            }
+            else
+            {
+                /* mpv not found or failed - reset timer to avoid hammering */
+                state.lastInputTick = SDL_GetTicks();
+                state.statusMsg     = "ATTRACT: mpv not found in PATH";
+            }
+        }
+
+        /* ---- Attract mode: poll for input without needing focus ---- */
+        if (state.attractActive)
+        {
+            /* XInput: check all four possible controller slots */
+            bool joyActivity = false;
+            for (DWORD i = 0; i < 4; ++i)
+            {
+                XINPUT_STATE xs = {};
+                if (XInputGetState(i, &xs) == ERROR_SUCCESS)
+                {
+                    /* Any button, or stick deflection beyond dead zone */
+                    if (xs.Gamepad.wButtons != 0                          ||
+                        abs(xs.Gamepad.sThumbLY) > XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE ||
+                        abs(xs.Gamepad.sThumbLX) > XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE)
+                    {
+                        joyActivity = true;
+                        break;
+                    }
+                }
+            }
+
+            /* Keyboard fallback: any key */
+            bool keyActivity = false;
+            for (int vk = 0; vk < 256; ++vk)
+            {
+                if (GetAsyncKeyState(vk) & 0x8000)
+                {
+                    keyActivity = true;
+                    break;
+                }
+            }
+
+            if (joyActivity || keyActivity)
+            {
+                StopAttract(state.attractProcess, window);
+                state.attractActive = false;
+                state.lastInputTick = SDL_GetTicks();
+                state.statusMsg     = "SYSTEM NOMINAL.";
             }
         }
 
@@ -925,6 +1062,7 @@ int main(int argc, char* argv[])
 
             /* Force window focus back to us after child exits */
             SDL_RaiseWindow(window);
+            state.lastInputTick = SDL_GetTicks();  /* Don't immediately attract after game exit */
         }
 
         /* ---- Render frame ---- */
