@@ -20,7 +20,7 @@
 #include <string>
 #include <vector>
 
-#define MAX_ENTRIES 16
+#define MAX_ENTRIES 20
 
 /* Single menu entry loaded from config */
 struct MenuEntry
@@ -28,6 +28,7 @@ struct MenuEntry
     std::string name;           /* Display name shown in menu */
     std::string launchString;   /* Full command line to execute */
     std::string screenshotPath; /* Path to PNG screenshot file */
+    std::string folderPath;     /* ignored unless set, then we cd */
 };
 
 /* Loads all entries from the config file at 'path'.
@@ -36,4 +37,4 @@ struct MenuEntry
  * 'error' is populated with a human-readable message on failure. */
 bool LoadConfig(const std::string& path,
                 std::vector<MenuEntry>& entries,
-                std::string& error);
+                std::string& error, int& timeoutVal);

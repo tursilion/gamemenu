@@ -24,6 +24,8 @@
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <xinput.h>
+#include <algorithm>
+#include <random>
 
 /* ---- stb_image: single-header PNG loader, implementation in this TU ---- */
 #define STB_IMAGE_IMPLEMENTATION
@@ -83,8 +85,9 @@ static const float  SHOT_W           = 480.0f;
 static const float  SHOT_H           = 320.0f;
 
 /* Attract mode - idle timeout before video plays */
-static const Uint32 ATTRACT_TIMEOUT_MS = 30000;  /* 30 seconds idle */
+static const Uint32 ATTRACT_TIMEOUT_MS = 30;  /* 30 seconds idle */
 static const char*  ATTRACT_VIDEO_PATH = "attract.mp4"; /* video to play */
+static int attractModeTimeout = ATTRACT_TIMEOUT_MS;
 
 /* =========================================================================
  * Screenshot texture cache
@@ -122,6 +125,8 @@ struct AppState
     Uint32  lastInputTick;   /* SDL_GetTicks() of last user input */
     bool    attractActive;   /* true while attract video is playing */
     HANDLE  attractProcess;  /* Win32 handle to mpv process, NULL if not running */
+    std::vector<std::string> attractVideos; /* enumerated video files */
+    bool    attractEnum;     /* true once enumerated */
 };
 
 /* =========================================================================
@@ -587,22 +592,72 @@ static void DrawScreenshotPanel(ImDrawList* dl, AppState& state,
 }
 
 /* =========================================================================
- * StartAttract - Launch mpv fullscreen to play the attract video.
- * mpv is launched with no OSD, looping, on top of our window.
- * Returns the process HANDLE on success, NULL on failure.
- * The caller is responsible for closing the handle.
+ * EnumerateAttractVideos - Scan the 'attract' subfolder for video files.
+ * Populates state.attractVideos. Called once on first attract trigger.
  * ========================================================================= */
-static HANDLE StartAttract(const char* videoPath)
+static void EnumerateAttractVideos(AppState& state)
 {
-    /* Build mpv command line.
-     * --loop           : loop video indefinitely until we kill it
-     * --fullscreen     : take over the display
-     * --no-osc         : no on-screen controls
-     * --no-input-default-bindings : prevent mpv consuming our input events */
+    state.attractVideos.clear();
+
+    WIN32_FIND_DATAA fd;
+    HANDLE hFind = FindFirstFileA("attract\\*.*", &fd);
+    if (hFind == INVALID_HANDLE_VALUE) return;
+
+    do
+    {
+        /* Skip directories */
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+
+        /* Check extension against known video types */
+        const char* name = fd.cFileName;
+        const char* dot  = strrchr(name, '.');
+        if (!dot) continue;
+
+        /* Case-insensitive extension check */
+        char ext[16] = {};
+        strncpy_s(ext, sizeof(ext), dot + 1, _TRUNCATE);
+        _strlwr_s(ext, sizeof(ext));
+
+        if (strcmp(ext, "mp4")  == 0 ||
+            strcmp(ext, "mkv")  == 0 ||
+            strcmp(ext, "avi")  == 0 ||
+            strcmp(ext, "mov")  == 0 ||
+            strcmp(ext, "webm") == 0)
+        {
+            state.attractVideos.push_back(std::string("attract\\") + name);
+        }
+    }
+    while (FindNextFileA(hFind, &fd));
+
+    FindClose(hFind);
+}
+
+/* =========================================================================
+ * StartAttract - Pick a random video from attractVideos and launch mpv.
+ * mpv is told to play once and exit (no --loop this time).
+ * Returns the process HANDLE on success, NULL on failure.
+ * ========================================================================= */
+static HANDLE StartAttract(AppState& state)
+{
+    /* Enumerate once */
+    if (!state.attractEnum)
+    {
+        EnumerateAttractVideos(state);
+        state.attractEnum = true;
+    }
+
+    /* just in case */
+    if (state.attractVideos.empty()) return NULL;
+
+    /* Pick a random video */
+    static std::mt19937 rng(std::random_device{}());
+    std::uniform_int_distribution<size_t> dist(0, state.attractVideos.size() - 1);
+    const std::string& video = state.attractVideos[dist(rng)];
+
     char cmdBuf[1024];
     snprintf(cmdBuf, sizeof(cmdBuf),
-        "mpv --loop --fullscreen --no-osc --no-input-default-bindings \"%s\"",
-        videoPath);
+        "mpv --fullscreen --no-osc --no-input-default-bindings \"%s\"",
+        video.c_str());
 
     STARTUPINFOA        si = {};
     PROCESS_INFORMATION pi = {};
@@ -611,7 +666,7 @@ static HANDLE StartAttract(const char* videoPath)
     BOOL ok = CreateProcessA(NULL, cmdBuf, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi);
     if (!ok) return NULL;
 
-    CloseHandle(pi.hThread);  /* Don't need the thread handle */
+    CloseHandle(pi.hThread);
     return pi.hProcess;
 }
 
@@ -763,9 +818,10 @@ int main(int argc, char* argv[])
     state.lastInputTick  = SDL_GetTicks();
     state.attractActive  = false;
     state.attractProcess = NULL;
+    state.attractEnum = false;
 
     std::string configError;
-    if (!LoadConfig(configPath, state.entries, configError))
+    if (!LoadConfig(configPath, state.entries, configError, attractModeTimeout))
     {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,
             "Config Error", configError.c_str(), NULL);
@@ -946,11 +1002,11 @@ SDL_Event ev;
             }
         }
 
-        /* ---- Attract mode timeout check ---- */
+        /* ---- Attract mode timeout check (ticks are in ms) ---- */
         if (!state.attractActive &&
-            (SDL_GetTicks() - state.lastInputTick) >= ATTRACT_TIMEOUT_MS)
+            (SDL_GetTicks() - state.lastInputTick) >= attractModeTimeout*1000)
         {
-            state.attractProcess = StartAttract(ATTRACT_VIDEO_PATH);
+            state.attractProcess = StartAttract(state);
             if (state.attractProcess != NULL)
             {
                 state.attractActive = true;
@@ -967,6 +1023,16 @@ SDL_Event ev;
         /* ---- Attract mode: poll for input without needing focus ---- */
         if (state.attractActive)
         {
+            /* Check if mpv finished the video and exited by itself */
+            if (WaitForSingleObject(state.attractProcess, 0) == WAIT_OBJECT_0)
+            {
+                CloseHandle(state.attractProcess);
+                state.attractProcess = NULL;
+                state.attractActive  = false;
+                state.lastInputTick  = SDL_GetTicks();
+                state.statusMsg      = "SYSTEM NOMINAL.";
+            }
+
             /* XInput: check all four possible controller slots */
             bool joyActivity = false;
             for (DWORD i = 0; i < 4; ++i)
@@ -1044,8 +1110,15 @@ SDL_Event ev;
             ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData(), renderer);
             SDL_RenderPresent(renderer);
 
+            /* if there is a working path, then CD to it, remembering current path */
+            char savedDir[MAX_PATH];
+            GetCurrentDirectory(MAX_PATH, savedDir);
+
             /* Temporarily suspend ImGui/SDL rendering and launch child */
             std::string launchError;
+            if (!entry.folderPath.empty()) {
+                SetCurrentDirectory(entry.folderPath.c_str());
+            }
             bool ok = LaunchAndWait(entry.launchString, launchError);
 
             if (!ok)
@@ -1059,6 +1132,9 @@ SDL_Event ev;
             {
                 state.statusMsg = "PROGRAM EXITED. SYSTEM NOMINAL.";
             }
+
+            /* restore working directory */
+            SetCurrentDirectory(savedDir);
 
             /* Force window focus back to us after child exits */
             SDL_RaiseWindow(window);

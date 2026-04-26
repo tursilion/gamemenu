@@ -46,7 +46,7 @@ static std::string toLower(const std::string& s)
  *---------------------------------------------------------------------------*/
 bool LoadConfig(const std::string& path,
                 std::vector<MenuEntry>& entries,
-                std::string& error)
+                std::string& error, int& timeoutVal)
 {
     std::ifstream file(path);
     if (!file.is_open())
@@ -103,9 +103,6 @@ bool LoadConfig(const std::string& path,
             continue;
         }
 
-        /* Must be inside a section to process key=value pairs */
-        if (!inEntry) continue;
-
         /* Split on first '=' */
         size_t eq = line.find('=');
         if (eq == std::string::npos) continue;  /* Malformed line, skip */
@@ -116,6 +113,18 @@ bool LoadConfig(const std::string& path,
         trim(val);
 
         std::string keyLower = toLower(key);
+
+        /* Must be inside a section to process key=value pairs */
+        /* except for AttractTimeout */
+        if (!inEntry) {
+            if (keyLower == "attracttimeout") {
+                int n = atoi(val.c_str());
+                if (n != 0) {
+                    timeoutVal = n;
+                }
+            }
+            continue;
+        }
 
         if (keyLower == "name")
         {
@@ -130,6 +139,11 @@ bool LoadConfig(const std::string& path,
         else if (keyLower == "screenshot")
         {
             pending.screenshotPath = val;
+            hasShot = true;
+        }
+        else if (keyLower == "folder")
+        {
+            pending.folderPath = val;
             hasShot = true;
         }
         /* Unknown keys are silently ignored */
