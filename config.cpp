@@ -46,7 +46,7 @@ static std::string toLower(const std::string& s)
  *---------------------------------------------------------------------------*/
 bool LoadConfig(const std::string& path,
                 std::vector<MenuEntry>& entries,
-                std::string& error, int& timeoutVal)
+                std::string& error, int& timeoutVal, float& fontscale)
 {
     std::ifstream file(path);
     if (!file.is_open())
@@ -121,6 +121,12 @@ bool LoadConfig(const std::string& path,
                 int n = atoi(val.c_str());
                 if (n != 0) {
                     timeoutVal = n;
+                }
+            }
+            if (keyLower == "fontscale") {
+                float n;
+                if (1 == sscanf(val.c_str(), "%f", &n)) {
+                    fontscale = n;
                 }
             }
             continue;

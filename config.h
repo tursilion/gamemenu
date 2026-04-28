@@ -37,4 +37,4 @@ struct MenuEntry
  * 'error' is populated with a human-readable message on failure. */
 bool LoadConfig(const std::string& path,
                 std::vector<MenuEntry>& entries,
-                std::string& error, int& timeoutVal);
+                std::string& error, int& timeoutVal, float& fontscale);

@@ -75,6 +75,7 @@ static const ImVec4 COL_STRIPE       = { 0.08f, 0.08f, 0.20f, 1.0f }; /* Alterna
 
 /* my font scaler */
 static const float FONTSCALE   = 3.0f;
+static float fontscale = FONTSCALE;
 
 /* Joystick thresholds */
 static const float  JOY_AXIS_DEAD    = 0.3f;   /* Dead zone for analog axis */
@@ -250,7 +251,7 @@ static void DrawLCARSDecorations(ImDrawList* dl,
 
     /* Header text: system name */
     ImFont* font = ImGui::GetFont();
-    float   fontSize = 28.0f*FONTSCALE;
+    float   fontSize = 28.0f*fontscale;
     dl->AddText(font, fontSize,
         { PILL_R * 2.0f + 12.0f, (HEADER_H - fontSize) * 0.5f },
         IM_COL32(10, 10, 30, 255),
@@ -276,7 +277,7 @@ static void DrawLCARSDecorations(ImDrawList* dl,
         float sd = 47634.0f + (year - 2000) * 1000.0f + (dayFrac / daysInYr) * 1000.0f;
         snprintf(stardate, sizeof(stardate), "STARDATE %08.1f", sd);
     }
-    dl->AddText(font, 16.0f*FONTSCALE,
+    dl->AddText(font, 16.0f*fontscale,
         { screenW * 0.56f + PAD, (HEADER_H - 16.0f) * 0.5f },
         IM_COL32(20, 20, 50, 255),
         stardate
@@ -318,11 +319,11 @@ static void DrawLCARSDecorations(ImDrawList* dl,
 
     /* Sidebar label text, rotated 90 deg not possible in ImDrawList without
      * a rotated texture. Instead place short horizontal labels. */
-    dl->AddText(font, 13.0f*FONTSCALE, { 8.0f, sbTop + 4.0f },
+    dl->AddText(font, 13.0f*fontscale, { 8.0f, sbTop + 4.0f },
         IM_COL32(10, 10, 30, 255), "GAMING");
-    dl->AddText(font, 13.0f*FONTSCALE, { 8.0f, sbTop + sbHeight * 0.26f },
+    dl->AddText(font, 13.0f*fontscale, { 8.0f, sbTop + sbHeight * 0.26f },
         IM_COL32(10, 10, 30, 255), "EMULATION");
-    dl->AddText(font, 13.0f*FONTSCALE, { 8.0f, sbTop + sbHeight * 0.56f },
+    dl->AddText(font, 13.0f*fontscale, { 8.0f, sbTop + sbHeight * 0.56f },
         IM_COL32(10, 10, 30, 255), "DATABASE");
 
     /* ---- Blinking alert light in sidebar (pulses red) ---- */
@@ -376,7 +377,7 @@ static void DrawLCARSDecorations(ImDrawList* dl,
     {
         footerText = statusMsg;
     }
-    dl->AddText(font, 16.0f*FONTSCALE,
+    dl->AddText(font, 16.0f*fontscale,
         { SIDEBAR_W + 20.0f, screenH - FOOTER_H + (FOOTER_H - 50.0f) * 0.5f },
         V4Col(statusCol),
         footerText.c_str()
@@ -412,19 +413,19 @@ static int DrawMenuPanel(ImDrawList* dl, AppState& state,
     ImFont* font      = ImGui::GetFont();
 
     /* Row height must accommodate the scaled font.
-     * Font is loaded at 22*FONTSCALE px; add vertical padding around it. */
-    const float FONT_SIZE = 22.0f * FONTSCALE;
+     * Font is loaded at 22*fontscale px; add vertical padding around it. */
+    const float FONT_SIZE = 22.0f * fontscale;
     const float ROW_PAD   = 10.0f;
     const float itemH     = FONT_SIZE + ROW_PAD;
     const float rowGap    = 6.0f;
 
     /* Heading label */
-    dl->AddText(font, 14.0f * FONTSCALE,
+    dl->AddText(font, 14.0f * fontscale,
         { panelX + 8.0f, panelY + 4.0f },
         V4Col(COL_TEXT_DIM), "// AVAILABLE PROGRAMS //");
 
     /* List starts below the heading */
-    float listTop = panelY + 14.0f * FONTSCALE + 12.0f;
+    float listTop = panelY + 14.0f * fontscale + 12.0f;
 
     /* Mouse click detection directly against row rects - no InvisibleButton
      * needed since we are drawing into the window draw list, not a layout. */
@@ -532,13 +533,13 @@ static void DrawScreenshotPanel(ImDrawList* dl, AppState& state,
 
         /* Label above image */
         std::string label = "// " + state.entries[sel].name + " //";
-        dl->AddText(font, 15.0f*FONTSCALE,
+        dl->AddText(font, 15.0f*fontscale,
             { panelX + 18.0f, panelY + 16.0f },
             V4Col(COL_BLUE_LIGHT),
             label.c_str()
         );
 
-        float imgAreaOff  = FONTSCALE * 15.0f;
+        float imgAreaOff  = fontscale * 15.0f;
         float imgAreaTop  = panelY + 40.0f + imgAreaOff;
         float imgAreaH    = panelH - 56.0f - imgAreaOff;
         float imgAreaW    = panelW - 24.0f;
@@ -581,7 +582,7 @@ static void DrawScreenshotPanel(ImDrawList* dl, AppState& state,
             /* No image loaded: show a placeholder message */
             const char* noImg = "[ NO IMAGE ]";
             ImVec2 ts = ImGui::CalcTextSize(noImg);
-            dl->AddText(font, 18.0f*FONTSCALE,
+            dl->AddText(font, 18.0f*fontscale,
                 { panelX + (panelW - ts.x) * 0.5f,
                   imgAreaTop + (imgAreaH - 18.0f) * 0.5f },
                 V4Col(COL_TEXT_DIM),
@@ -821,7 +822,7 @@ int main(int argc, char* argv[])
     state.attractEnum = false;
 
     std::string configError;
-    if (!LoadConfig(configPath, state.entries, configError, attractModeTimeout))
+    if (!LoadConfig(configPath, state.entries, configError, attractModeTimeout, fontscale))
     {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,
             "Config Error", configError.c_str(), NULL);
