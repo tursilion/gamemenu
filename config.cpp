@@ -150,7 +150,10 @@ bool LoadConfig(const std::string& path,
         else if (keyLower == "folder")
         {
             pending.folderPath = val;
-            hasShot = true;
+        }
+        else if (keyLower == "videomatch")
+        {
+            pending.videoMatch = val;
         }
         /* Unknown keys are silently ignored */
     }

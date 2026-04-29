@@ -89,6 +89,7 @@ static const float  SHOT_H           = 320.0f;
 static const Uint32 ATTRACT_TIMEOUT_MS = 30;  /* 30 seconds idle */
 static const char*  ATTRACT_VIDEO_PATH = "attract.mp4"; /* video to play */
 static int attractModeTimeout = ATTRACT_TIMEOUT_MS;
+static int nextVid = 0;
 
 /* =========================================================================
  * Screenshot texture cache
@@ -644,17 +645,38 @@ static HANDLE StartAttract(AppState& state)
     if (!state.attractEnum)
     {
         EnumerateAttractVideos(state);
+        auto rng = std::default_random_engine {};
+        std::shuffle(std::begin(state.attractVideos), std::end(state.attractVideos), rng);
+        nextVid = 0;
         state.attractEnum = true;
     }
 
     /* just in case */
     if (state.attractVideos.empty()) return NULL;
 
-    /* Pick a random video */
-    static std::mt19937 rng(std::random_device{}());
-    std::uniform_int_distribution<size_t> dist(0, state.attractVideos.size() - 1);
-    const std::string& video = state.attractVideos[dist(rng)];
+    /* Pick the next video */
+    const std::string& video = state.attractVideos[nextVid++];
+    if (nextVid >= state.attractVideos.size()) {
+        // reshuffle to keep it random
+        auto rng = std::default_random_engine {};
+        std::shuffle(std::begin(state.attractVideos), std::end(state.attractVideos), rng);
+        nextVid = 0;
+    }
 
+    /* before we even start to play, change the selection (if we find a substring match) */
+    {
+        for (int idx = 0; idx < state.entries.size(); ++idx) {
+            if (!state.entries[idx].videoMatch.empty()) {
+                if (NULL != SDL_strcasestr(video.c_str(), state.entries[idx].videoMatch.c_str())) {
+                    // this is a match! select it
+                    state.selected = idx;
+                    break;
+                }
+            }
+        }
+    }
+
+    /* go ahead and ask mkv to play it */
     char cmdBuf[1024];
     snprintf(cmdBuf, sizeof(cmdBuf),
         "mpv --fullscreen --no-osc --no-input-default-bindings \"%s\"",

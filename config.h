@@ -29,6 +29,7 @@ struct MenuEntry
     std::string launchString;   /* Full command line to execute */
     std::string screenshotPath; /* Path to PNG screenshot file */
     std::string folderPath;     /* ignored unless set, then we cd */
+    std::string videoMatch;     /* if set, attract videos with this substring will set this entry on exit */
 };
 
 /* Loads all entries from the config file at 'path'.
