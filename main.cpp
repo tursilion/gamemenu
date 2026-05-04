@@ -279,7 +279,7 @@ static void DrawLCARSDecorations(ImDrawList* dl,
         snprintf(stardate, sizeof(stardate), "STARDATE %08.1f", sd);
     }
     dl->AddText(font, 16.0f*fontscale,
-        { screenW * 0.56f + PAD, (HEADER_H - 16.0f) * 0.5f },
+        { screenW * 0.56f + PAD, (HEADER_H - 16.0f) * 0.4f },
         IM_COL32(20, 20, 50, 255),
         stardate
     );
